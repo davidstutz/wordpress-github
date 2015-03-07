@@ -11,14 +11,23 @@ In `wp-content/plugins`, create a new folder `github` and put all files within t
 ## Shortcodes
 
 * [Commits](#commits)
+* [Issues](#issues)
 
 ### Commits
 
-Use the following shortcodefor displaying commits from several repositories:
+Use the following shortcode for displaying commits from several repositories:
 
-    [github-commits repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5"]
+    [github-commits repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" template="default"]
 
-This will show the 5 most recent commits made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`.
+This will show the 5 most recent commits made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`. Additional templates can be implemented by adapting 'Github::$templates'.
+
+### Issues
+
+Use the following shortcode for displaying issues from several repositories and all users:
+
+    [github-issues repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" template="default"]
+
+This will show the 5 most recent issues made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`. Additional templates can be implemented by adapting 'Github::$templates'.
 
 ## License
 
