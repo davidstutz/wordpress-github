@@ -32,6 +32,16 @@ if (!class_exists('GitHubClient')) {
  */
 class Github {
     
+    /**
+     * Seconds to cache result.
+     */
+    const CACHE_EXPIRE = 43200;
+    
+    /**
+     * Templates for some of the shortcodes.
+     * 
+     * @var type 
+     */
     protected static $templates = array(
         'default' => array(
             'github_commits' => '<li class="wp-github-commit"><b><a href="https://github.com/:repository" target="_blank">:repository</a>@<a href=":url" target="_blank"><code class="wp-github-commit-sha">:sha</code></a></b>: :message <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :date</li>',
@@ -42,12 +52,16 @@ class Github {
     /**
      * Initialize all provided shortcodes.
      */
-    public static function init_shortcodes() {
+    public static function init() {
+        
+        // Add settings menu.
+        add_action('admin_menu', array('Github', 'admin_menu'));
+        add_action('admin_init', array('Github', 'register_settings'));
+        
         add_shortcode('github-commits', array('Github', 'commits'));
         add_shortcode('github-issues', array('Github', 'issues'));
         add_shortcode('github-pull-requests', array('Github', 'pull_requests'));
         add_shortcode('github-user-num-repos', array('Github', 'user_num_repos'));
-        add_shortcode('github-user-num-forks', array('Github', 'user_num_forks'));
         add_shortcode('github-user-num-commits', array('Github', 'user_num_commits'));
         add_shortcode('github-user-num-stars', array('Github', 'user_num_stars'));
         add_shortcode('github-user-num-starred', array('Github', 'user_num_starred'));
@@ -65,14 +79,151 @@ class Github {
      * @return \GitHub\Client
      */
     public static function setup_client() {
-        return new GitHubClient();
+        $client = new GitHubClient();
+        
+        $login = get_option('wp_github_login', FALSE);
+        $password = get_option('wp_github_password', FALSE);
+        
+        if ($login !== FALSE && $password !== FALSE) {
+            $client->setAuthType(GitHubClient::GITHUB_AUTH_TYPE_BASIC);
+            $client->setCredentials($login, $password);
+        }
+        
+        return $client;
+    }
+    
+    public static function md5($input) {
+        return md5(serialize($input));
     }
     
     /**
-     * Shortcode to display commits of a number of repositories on GitHub.
+     * Set a value in the cache.
+     */
+    public static function cache_set($key, $data, $expire) {
+        wp_cache_set($key, $data, '', 0);
+    }
+    
+    /**
+     * Get a value from the cache.
+     */
+    public static function cache_get($key) {
+        return wp_cache_get($key);
+    }
+    
+    /**
+     * Add the admin menu for authentication. Will add a "GitHub" menu item in "Settings".
+     */
+    public static function admin_menu() {
+        add_options_page('WP GitHub Options', 'GitHub', 'manage_options', 'wp-github-options', array('Github', 'plugin_options'));
+    }
+    
+    /**
+     * The plugin' settings page.
+     */
+    public static function plugin_options() {
+        if (!current_user_can('manage_options'))  {
+            wp_die(__( 'You do not have sufficient permissions to access this page.', 'wp-github'));
+	}
+        
+        Github::check_credentials();
+        
+	echo '<div class="wrap">';
+	echo '<h2>' . __('WP GitHub Options', 'wp-github') . '</h2>';
+        echo '<form method="POST" action="options.php"> ';
+        echo settings_fields('wp_github');
+        echo do_settings_sections('wp-github-options');
+        echo submit_button();
+        echo '</form>';
+	echo '</div>';
+    }
+    
+    /**
+     * Register settings for authentication: login and password.
+     */
+    public static function register_settings() {
+        register_setting(
+            'wp_github',
+            'wp_github_login'
+        );
+
+        register_setting(
+            'wp_github',
+            'wp_github_password'
+        );
+        
+        add_settings_section(
+            'wp_github_section',
+            'Authentication',
+            array('Github', 'settings_info'), 
+            'wp-github-options'
+        );  
+
+        add_settings_field(
+            'login',
+            'Login',
+            array('Github', 'settings_login'), 
+            'wp-github-options',
+            'wp_github_section'          
+        );      
+
+        add_settings_field(
+            'password', 
+            'Password', 
+            array('Github', 'settings_password'), 
+            'wp-github-options', 
+            'wp_github_section'
+        );
+    }
+    
+    /**
+     * Info for the authentication settings group.
+     */
+    public static function settings_info() {
+        echo 'In order of the plugin to successfully query the GitHub API, '
+                . 'the following credentials are necessary for authentication:';
+    }
+    
+    /**
+     * Settings login field.
+     */
+    public static function settings_login() {
+        echo '<input type="text" name="wp_github_login" value="' . get_option('wp_github_login') . '" />';
+    }
+    
+    /**
+     * Settings password field.
+     */
+    public static function settings_password() {
+        echo '<input type="password" name="wp_github_password" value="' . get_option('wp_github_password') . '" />';
+    }
+    
+    /**
+     * Check the credentials and see if user is valid and check rate limit.
+     */
+    public static function check_credentials() {
+        $login = get_option('wp_github_login', FALSE);
+        $password = get_option('wp_github_password', FALSE);
+        
+        $client = Github::setup_client();
+        
+        $client->setAuthType(GitHubClient::GITHUB_AUTH_TYPE_BASIC);
+        $client->setCredentials($login, $password);
+        
+        $user = $client->users->getSingleUser($login);
+        
+        $rate_limit = $client->getRateLimit();
+        $rem_rate_limit = $client->getRateLimitRemaining();
+        
+        echo '<div class="updated"><p>Authentation with login <b>' . $login . '</b> (' . $user->getName() . ', ' . $user->getPublicRepos() . ' public repositories): rate limit: ' . ($rate_limit - $rem_rate_limit) . ' / ' . $rate_limit . '</p></div>';
+    }
+    
+    /**
+     * Display commits of the given repositories:
      * 
-     * @param type $content
-     * @param type $attributes
+     *  [github-commits repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" format="m/d/Y"]
+     * 
+     * @param string $content
+     * @param array $attributes
      * @return string
      */
     public static function commits($attributes, $content = null) {
@@ -84,6 +235,12 @@ class Github {
         ), $attributes));
         
         $client = Github::setup_client();
+        
+        $cache_string = 'wp_github_commits' . Github::md5($attributes);
+        $cache = Github::cache_get($cache_string);
+        if ($cache !== FALSE) {
+            return $cache;
+        }
         
         if (!empty($repositories)) {
             $repositories = explode(',', $repositories);
@@ -144,10 +301,22 @@ class Github {
             $html .= strtr(Github::$templates[$template]['github_commits'], $commit);
             $count++;
         }
+        $html .= '</ul>';
         
-        return $html . '</ul>';
+        Github::cache_set($cache_string, $html, Github::CACHE_EXPIRE);
+        
+        return $html;
     }
     
+    /**
+     * List issues of the given repositories:
+     * 
+     *  [github-issues repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" format="m/d/Y"]
+     * 
+     * @param array $attributes
+     * @param string $content
+     * @return string
+     */
     public static function issues($attributes, $content = null) {
         extract(shortcode_atts(array(
             'repositories' => '',
@@ -157,6 +326,12 @@ class Github {
         ), $attributes));
         
         $client = Github::setup_client();
+        
+        $cache_string = 'wp_github_issues' . Github::md5($attributes);
+        $cache = Github::cache_get($cache_string);
+        if ($cache !== FALSE) {
+            return $cache;
+        }
         
         if (!empty($repositories)) {
             $repositories = explode(',', $repositories);
@@ -219,9 +394,91 @@ class Github {
             $html .= strtr(Github::$templates[$template]['github_issues'], $issue);
             $count++;
         }
+        $html .= '</ul>';
         
-        return $html . '</ul>';
+        Github::cache_set($cache_string, $html, Github::CACHE_EXPIRE);
+        
+        return $html;
+    }
+    
+    /**
+     * Get the number of repositories of the user:
+     * 
+     *  [github-user-num-repos user="davidstutz"]
+     * 
+     * @param array $attributes
+     * @param string $content
+     * @return string
+     */
+    public static function user_num_repos($attributes, $content = null) {
+        extract(shortcode_atts(array(
+            'user' => '',
+            'type' => 'owner',
+        ), $attributes));
+        
+        $client = Github::setup_client();
+        
+        $cache_string = 'wp_github_user_num_repos' . Github::md5($attributes);
+        $cache = Github::cache_get($cache_string);
+        if ($cache !== FALSE) {
+            return $cache;
+        }
+        
+        if (!empty($user)) {
+           
+            $num = $client->users->getSingleUser($user)->getPublicRepos();
+            Github::cache_set($cache_string, $num, Github::CACHE_EXPIRE);
+            
+            return $num;
+        }
+        
+        return '';
+    }
+    
+    /**
+     * Get number of commits of a specific user to any of his/her public repositories:
+     * 
+     *  [github-user-num-commits user="davidstutz"]
+     * 
+     * **Note** that this makes several API requests, therefore a caching plugin is
+     * highly recommended. The plugin has to support the Wordpress Object Cache.
+     * 
+     * @see http://codex.wordpress.org/Class_Reference/WP_Object_Cache#Persistent_Cache_Plugins
+     * @param array $attributes
+     * @param string $content
+     * @return string
+     */
+    public static function user_num_commits($attributes, $content = null) {
+        extract(shortcode_atts(array(
+            'user' => '',
+        ), $attributes));
+        
+        $client = Github::setup_client();
+        
+        $cache_string = 'wp_github_user_num_commits' . Github::md5($attributes);
+        $cache = Github::cache_get($cache_string);
+        if ($cache !== FALSE) {
+            return $cache;
+        }
+        
+        if (!empty($user)) {
+            $repos = $client->repos->listUserRepositories($user);
+            
+            $commits = 0;
+            foreach ($repos as $repo) {
+                
+                $repo_commits = $client->repos->commits->listCommitsOnRepository($user, $repo->getName(), NULL, NULL, $user);
+                
+                $commits += sizeof($repo_commits);
+            }
+            
+            Github::cache_set($cache_string, $commits, Github::CACHE_EXPIRE);
+            
+            return $commits;
+        }
+        
+        return '';
     }
 }
 
-Github::init_shortcodes();
+Github::init();
