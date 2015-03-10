@@ -45,7 +45,8 @@ class Github {
     protected static $templates = array(
         'default' => array(
             'github_commits' => '<li class="wp-github-commit"><b><a href="https://github.com/:repository" target="_blank">:repository</a>@<a href=":url" target="_blank"><code class="wp-github-commit-sha">:sha</code></a></b>: :message <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :date</li>',
-            'github_issues' => '<li class="wp-github-issue"><b><a href="https://github.com/:repository" target="_blank">:repository</a>@<a href=":url" target="_blank"><code class="wp-github-issue-number">:number</code></a></b>: :title <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :state, :date</li>',
+            'github_issues' => '<li class="wp-github-issue"><b><a href="https://github.com/:repository" target="_blank">:repository</a>#<a href=":url" target="_blank"><code class="wp-github-issue-number">:number</code></a></b>: :title <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :state, :date</li>',
+            'github_releases' => '<li class="wp-github-release"><b><a href="https://github.com/:repository" target="_blank">:repository</a>/<a href=":url">:tag_name</a></b>: :name <a href=":tar_url" class="wp-github-release-tar">tar</a>, <a href=":zip_url" class="wp-github-release-zip">zip</a>, :date</li>',
         ),
     );
     
@@ -60,17 +61,8 @@ class Github {
         
         add_shortcode('github-commits', array('Github', 'commits'));
         add_shortcode('github-issues', array('Github', 'issues'));
-        add_shortcode('github-pull-requests', array('Github', 'pull_requests'));
+        add_shortcode('github-releases', array('Github', 'releases'));
         add_shortcode('github-user-num-repos', array('Github', 'user_num_repos'));
-        add_shortcode('github-user-num-commits', array('Github', 'user_num_commits'));
-        add_shortcode('github-user-num-stars', array('Github', 'user_num_stars'));
-        add_shortcode('github-user-num-starred', array('Github', 'user_num_starred'));
-        add_shortcode('github-user-num-following', array('Github', 'user_num_following'));
-        add_shortcode('github-user-num-followers', array('Github', 'user_num_followers'));
-        add_shortcode('github-user-num-contributors', array('Github', 'user_num_contributors'));
-        add_shortcode('github-user-num-pull-requests', array('Github', 'user_num_pull_requests')); // Pull request to other public repos.
-        add_shortcode('github-user-num-contributing-repos', array('Github', 'user_num_contributing_repos')); // Number of public repositores contributed to.
-        add_shortcode('github-user-num-contributions', array('Github', 'user_num_contributions'));
     }
     
     /**
@@ -242,10 +234,10 @@ class Github {
             return $cache;
         }
         
+        $commits = array();
         if (!empty($repositories)) {
             $repositories = explode(',', $repositories);
             
-            $commits = array();
             foreach ($repositories as $repository) {
                 $tmp = explode('/', $repository);
                 
@@ -333,10 +325,10 @@ class Github {
             return $cache;
         }
         
+        $issues = array();
         if (!empty($repositories)) {
             $repositories = explode(',', $repositories);
             
-            $issues = array();
             foreach ($repositories as $repository) {
                 $tmp = explode('/', $repository);
                 
@@ -401,6 +393,87 @@ class Github {
         return $html;
     }
     
+    public static function releases($attributes, $content = null) {
+        extract(shortcode_atts(array(
+            'repositories' => '',
+            'format' => 'm/d/Y',
+            'limit' => 3,
+            'template' => 'default',
+        ), $attributes));
+        
+        $client = Github::setup_client();
+        
+        $cache_string = 'wp_github_releases' . Github::md5($attributes);
+        $cache = Github::cache_get($cache_string);
+//        if ($cache !== FALSE) {
+//            return $cache;
+//        }
+        
+        $releases = array();
+        if (!empty($repositories)) {
+            $repositories = explode(',', $repositories);
+            
+            foreach ($repositories as $repository) {
+                $tmp = explode('/', $repository);
+                
+                if (sizeof($tmp) != 2) {
+                    continue;
+                }
+                
+                $user = $tmp[0];
+                $repo = $tmp[1];
+                
+                $repo_releases = $client->repos->releases->listReposReleases($user, $repo);
+                
+                foreach ($repo_releases as $release) {
+                    $releases[] = array(
+                        ':repository' => $repository,
+                        ':timestamp' => strtotime($release->getPublished_at()),
+                        ':date' => date($format, strtotime($release->getPublished_at())),
+                        ':name' => $release->getName(),
+                        ':url' => $release->getUrl(),
+                        ':tag_name' => $release->getTag_name(),
+                        ':tar_url' => $release->getTarball_url(),
+                        ':zip_url' => $release->getZipball_url(),
+                    );
+                }
+            }
+        }
+        
+        if (!function_exists('sort_releases')) {
+            /**
+             * Sorts commits by time (recent first).
+             * 
+             * @return string
+             */
+            function sort_releases($a, $b) {
+                if ($a[':timestamp'] == $b[':timestamp']) {
+                    return 0;
+                }
+
+                return $a[':timestamp'] < $b[':timestamp'] ? 1 : -1;
+            }
+        }
+        
+        usort($releases, 'sort_releases');
+        
+        $count = 1;
+        $html = '<ul class="wp-github-releases">';
+        foreach ($releases as $release) {
+            if ($count > $limit) {
+                break;
+            }
+            
+            $html .= strtr(Github::$templates[$template]['github_releases'], $release);
+            $count++;
+        }
+        $html .= '</ul>';
+        
+        Github::cache_set($cache_string, $html, Github::CACHE_EXPIRE);
+        
+        return $html;
+    }
+    
     /**
      * Get the number of repositories of the user:
      * 
@@ -430,51 +503,6 @@ class Github {
             Github::cache_set($cache_string, $num, Github::CACHE_EXPIRE);
             
             return $num;
-        }
-        
-        return '';
-    }
-    
-    /**
-     * Get number of commits of a specific user to any of his/her public repositories:
-     * 
-     *  [github-user-num-commits user="davidstutz"]
-     * 
-     * **Note** that this makes several API requests, therefore a caching plugin is
-     * highly recommended. The plugin has to support the Wordpress Object Cache.
-     * 
-     * @see http://codex.wordpress.org/Class_Reference/WP_Object_Cache#Persistent_Cache_Plugins
-     * @param array $attributes
-     * @param string $content
-     * @return string
-     */
-    public static function user_num_commits($attributes, $content = null) {
-        extract(shortcode_atts(array(
-            'user' => '',
-        ), $attributes));
-        
-        $client = Github::setup_client();
-        
-        $cache_string = 'wp_github_user_num_commits' . Github::md5($attributes);
-        $cache = Github::cache_get($cache_string);
-        if ($cache !== FALSE) {
-            return $cache;
-        }
-        
-        if (!empty($user)) {
-            $repos = $client->repos->listUserRepositories($user);
-            
-            $commits = 0;
-            foreach ($repos as $repo) {
-                
-                $repo_commits = $client->repos->commits->listCommitsOnRepository($user, $repo->getName(), NULL, NULL, $user);
-                
-                $commits += sizeof($repo_commits);
-            }
-            
-            Github::cache_set($cache_string, $commits, Github::CACHE_EXPIRE);
-            
-            return $commits;
         }
         
         return '';

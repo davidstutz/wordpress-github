@@ -13,9 +13,9 @@ Lightweight Wordpress plugin providing acess to GitHub through shortcodes. The p
 * [Shortcodes](#shortcodes)
     * [Commits](#commits)
     * [Issues](#issues)
+    * [Releases](#releases)
     * [User](#user)
         * [Number of Repositories](#number-of-repositories)
-        * [Number of Commits](#number-of-commits)
 
 ## Installation
 
@@ -33,17 +33,55 @@ The following list details the usage of all provided shortcodes.
 
 Use the following shortcode for displaying commits from several repositories:
 
-    [github-commits repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" template="default"]
+    [github-commits repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" format="m/d/Y" template="default"]
 
-This will show the 5 most recent commits made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`. Additional templates can be implemented by adapting 'Github::$templates'.
+This will show the 5 most recent commits made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`. The generated HTML looks as follows:
+
+    <ul class="wp-github-commits">
+        <li class="wp-github-commit">
+            <b><a href="https://github.com/:repository" target="_blank">:repository</a>
+            @<a href=":url" target="_blank"><code class="wp-github-commit-sha">:sha</code></a></b>: 
+            :message <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :date
+        </li>
+    </ul>
+
+Additional templates can be added by adapting `Github::$templates`.
 
 ### Issues
 
 Use the following shortcode for displaying issues from several repositories and all users:
 
-    [github-issues repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" template="default"]
+    [github-issues repositories="davidstutz/wordpress-github,davidstutz/wordpress-user-biography" limit="5" format="m/d/Y" template="default"]
 
-This will show the 5 most recent issues made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`. Additional templates can be implemented by adapting 'Github::$templates'.
+This will show the 5 most recent issues made to either `davidstutz/wordpress-github` or `davidstutz/wordpress-user-biography`. Additional templates can be implemented by adapting 'Github::$templates'. The generated HTML looks as follows:
+
+    <ul class="wp-github-issues">
+        <li class="wp-github-issue">
+            <b><a href="https://github.com/:repository" target="_blank">:repository</a>
+            #<a href=":url" target="_blank"><code class="wp-github-issue-number">:number</code></a></b>: 
+            :title <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :state, :date
+        </li>
+    </ul>
+
+Additional templates can be added by adapting `Github::$templates`.
+
+### Releases
+
+Use the following shortcode for displaying releases of one or several repositories:
+
+    [github-releases repositories="davidstutz/wordpress-github" limit="3" format="m/d/Y" template="default"]
+
+This will show the 3 most recent releases of `davidstutz/wordpress-github` (note that this repository currently has no releases, try `davidstutz/bootstrap-multiselect` instead). The generated HTML looks as follows:
+
+    <ul class="wp-github-releases">
+        <li class="wp-github-release">
+            <b><a href="https://github.com/:repository" target="_blank">:repository</a>
+            /<a href=":url">:tag_name</a></b>: 
+            :name <a href=":tar_url" class="wp-github-release-tar">tar</a>, <a href=":zip_url" class="wp-github-release-zip">zip</a>, :date
+        </li>
+    </ul>
+
+Additional templates can be added by adapting `Github::$templates`.
 
 ### User
 
@@ -53,11 +91,7 @@ To get the number of public repositories of a specific user, use:
 
     [github-user-num-repos user="davidstutz"]
 
-#### Numberof Commits
-
-To get the number of commits from a specific user (made to one of his public repositories), use:
-
-    [github-user-num-commits user="davidstutz"]
+The shortcode merely prints the number of repositories without any HTML tags.
 
 ## License
 
