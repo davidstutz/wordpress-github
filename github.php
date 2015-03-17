@@ -45,12 +45,12 @@ class Github {
     protected static $templates = array(
         'default' => array(
             'github_commits' => '<li class="wp-github-commit"><b><a href="https://github.com/:repository" target="_blank">:repository</a>@<a href=":html_url" target="_blank"><code class="wp-github-commit-sha">:sha</code></a></b>: :message <a href=":user_html_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :date</li>',
-            'github_issues' => '<li class="wp-github-issue"><b><a href="https://github.com/:repository" target="_blank">:repository</a>#<a href=":url" target="_blank"><code class="wp-github-issue-number">:number</code></a></b>: :title <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :state, :date</li>',
-            'github_releases' => '<li class="wp-github-release"><b><a href="https://github.com/:repository" target="_blank">:repository</a>/<a href=":url">:tag_name</a></b>: :name <a href=":tar_url" class="wp-github-release-tar">tar</a>, <a href=":zip_url" class="wp-github-release-zip">zip</a>, :date</li>',
+            'github_issues' => '<li class="wp-github-issue"><b><a href="https://github.com/:repository" target="_blank">:repository</a>#<a href=":html_url" target="_blank"><code class="wp-github-issue-number">:number</code></a></b>: :title <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :state, :date</li>',
+            'github_releases' => '<li class="wp-github-release"><b><a href="https://github.com/:repository" target="_blank">:repository</a>/<a href=":html_url">:tag_name</a></b>: :name <a href=":tar_html_url" class="wp-github-release-tar">tar</a>, <a href=":zip_html_url" class="wp-github-release-zip">zip</a>, :date</li>',
         ),
         'bootstrap' => array(
-            'github_commits' => '<li><a href=":user_url" target="_blank"><span class="label label-primary">:user_login</span></a> <a href=":html_url" target="_blank"><span class="label label-default">:sha</span></code></a></b> :message</li>',
-            'github_releases' => '<li><b><a href=":url" target="_blank">:tag_name</a></b> <a href=":zip_url" target="_blank">.zip</a> <a href=":tar_url" target="_blank">.tar</a></li>',
+            'github_commits' => '<li><a href=":user_html_url" target="_blank"><span class="label label-primary">:user_login</span></a> <a href=":html_url" target="_blank"><span class="label label-default">:sha</span></code></a></b> :message</li>',
+            'github_releases' => '<li><b><a href=":html_url" target="_blank">:tag_name</a></b> <a href=":zip_html_url" target="_blank">.zip</a> <a href=":tar_html_url" target="_blank">.tar</a></li>',
         ),
     );
     
@@ -290,11 +290,11 @@ class Github {
                             ':date' => date($format, strtotime($commit->getCommit()->getAuthor()->date)),
                             ':message' => $commit->getCommit()->getMessage(),
                             ':url' => $commit->getCommit()->getUrl(),
-                            ':html_url' => $commit->getHTMLUrl(),
+                            ':html_url' => $commit->getHtmlUrl(),
                             ':user_avatar' => $commit->getAuthor()->getAvatarUrl(),
                             ':user_login' => $commit->getAuthor()->getLogin(),
                             ':user_url' => $commit->getAuthor()->getUrl(),
-                            ':user_html_url' => $commit->getAuthor()->getHTMLUrl(),
+                            ':user_html_url' => $commit->getAuthor()->getHtmlUrl(),
                             ':sha' => substr($commit->getSha(), 0, 7),
                         );
                     }
@@ -387,11 +387,13 @@ class Github {
                         ':timestamp' => strtotime($issue->getCreatedAt()),
                         ':date' => date($format, strtotime($issue->getCreatedAt())),
                         ':url' => $issue->getUrl(),
+                        ':html_url' => $issue->getHtmlUrl(),
                         ':number' => $issue->getNumber(),
                         ':title' => $issue->getTitle(),
                         ':state' => $issue->getState(),
                         ':user_avatar' => $issue->getUser()->getAvatarUrl(),
                         ':user_url' => $issue->getUser()->getUrl(),
+                        ':user_html_url' => $issue->getUser()->getHtmlUrl(),
                         ':user_login' => $issue->getUser()->getLogin(),
                         ':comments' => $issue->getComments(),
                     );
@@ -449,9 +451,9 @@ class Github {
         
         $cache_string = 'wp_github_releases' . Github::md5($attributes);
         $cache = Github::cache_get($cache_string);
-//        if ($cache !== FALSE) {
-//            return $cache;
-//        }
+        if ($cache !== FALSE) {
+            return $cache;
+        }
         
         $releases = array();
         if (!empty($repositories)) {
@@ -476,9 +478,10 @@ class Github {
                         ':date' => date($format, strtotime($release->getPublished_at())),
                         ':name' => $release->getName(),
                         ':url' => $release->getUrl(),
+                        ':html_url' => $release->getHtml_url(),
                         ':tag_name' => $release->getTag_name(),
-                        ':tar_url' => $release->getTarball_url(),
-                        ':zip_url' => $release->getZipball_url(),
+                        ':tar_html_url' => $release->getTarball_url(),
+                        ':zip_html_url' => $release->getZipball_url(),
                     );
                 }
             }
