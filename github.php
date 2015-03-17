@@ -95,7 +95,7 @@ class Github {
      * Set a value in the cache.
      */
     public static function cache_set($key, $data, $expire) {
-        wp_cache_set($key, $data, '', 0);
+        wp_cache_set($key, $data, '', $expire);
     }
     
     /**
