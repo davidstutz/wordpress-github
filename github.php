@@ -44,9 +44,13 @@ class Github {
      */
     protected static $templates = array(
         'default' => array(
-            'github_commits' => '<li class="wp-github-commit"><b><a href="https://github.com/:repository" target="_blank">:repository</a>@<a href=":url" target="_blank"><code class="wp-github-commit-sha">:sha</code></a></b>: :message <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :date</li>',
+            'github_commits' => '<li class="wp-github-commit"><b><a href="https://github.com/:repository" target="_blank">:repository</a>@<a href=":html_url" target="_blank"><code class="wp-github-commit-sha">:sha</code></a></b>: :message <a href=":user_html_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :date</li>',
             'github_issues' => '<li class="wp-github-issue"><b><a href="https://github.com/:repository" target="_blank">:repository</a>#<a href=":url" target="_blank"><code class="wp-github-issue-number">:number</code></a></b>: :title <a href=":user_url" target="_blank"><img style="display:inline;" height="20" width="20" class="wp-github-commit-avatar" src=":user_avatar" /> :user_login</a>, :state, :date</li>',
             'github_releases' => '<li class="wp-github-release"><b><a href="https://github.com/:repository" target="_blank">:repository</a>/<a href=":url">:tag_name</a></b>: :name <a href=":tar_url" class="wp-github-release-tar">tar</a>, <a href=":zip_url" class="wp-github-release-zip">zip</a>, :date</li>',
+        ),
+        'bootstrap' => array(
+            'github_commits' => '<li><a href=":user_url" target="_blank"><span class="label label-primary">:user_login</span></a> <a href=":html_url" target="_blank"><span class="label label-default">:sha</span></code></a></b> :message</li>',
+            'github_releases' => '<li><b><a href=":url" target="_blank">:tag_name</a></b> <a href=":zip_url" target="_blank">.zip</a> <a href=":tar_url" target="_blank">.tar</a></li>',
         ),
     );
     
@@ -62,7 +66,6 @@ class Github {
         add_shortcode('github-commits', array('Github', 'commits'));
         add_shortcode('github-issues', array('Github', 'issues'));
         add_shortcode('github-releases', array('Github', 'releases'));
-        add_shortcode('github-user-num-repos', array('Github', 'user_num_repos'));
     }
     
     /**
@@ -125,6 +128,7 @@ class Github {
         echo settings_fields('wp_github');
         echo do_settings_sections('wp-github-options');
         echo submit_button();
+        echo '<p>*You can generate your personal GitHub API token in "Edit profile" &gt; "Applications" &gt; "Personal access tokens" and use the generated key as login while leaving the password field blank, see <a href="https://github.com/blog/1509-personal-api-tokens" target="_blank">here</a> for details.</p>';
         echo '</form>';
 	echo '</div>';
     }
@@ -152,7 +156,7 @@ class Github {
 
         add_settings_field(
             'login',
-            'Login',
+            'Login / OAuth Key*',
             array('Github', 'settings_login'), 
             'wp-github-options',
             'wp_github_section'          
@@ -196,17 +200,40 @@ class Github {
         $login = get_option('wp_github_login', FALSE);
         $password = get_option('wp_github_password', FALSE);
         
-        $client = Github::setup_client();
+        $key = empty($password);
         
-        $client->setAuthType(GitHubClient::GITHUB_AUTH_TYPE_BASIC);
-        $client->setCredentials($login, $password);
+        try {
+            $client = Github::setup_client();
+
+            // Check which type to use:
+            if ($key) {
+                $client->setAuthType(GitHubClient::GITHUB_AUTH_TYPE_OAUTH_BASIC);
+                $client->setOauthKey($login);
+            }
+            else {
+                $client->setAuthType(GitHubClient::GITHUB_AUTH_TYPE_BASIC);
+                $client->setCredentials($login, $password);
+            }
+            
+            $user = $client->users->getSingleUser($login);
+
+            $rate_limit = $client->getRateLimit();
+            $rem_rate_limit = $client->getRateLimitRemaining();
+        }
+        catch (GitHubClientException $e) {
+            // Could not connect, this happens if invalid user credentials
+            // where entered.
+            echo '<div class="error"><p><b>Authentication failed'
+                . (!empty($login) ? ' using ' . ($key ? 'key ' : 'login ') . $login : '')
+                . ':</b> Enter your GitHub account credentials.</p></div>';
+            
+            return;
+        }
         
-        $user = $client->users->getSingleUser($login);
-        
-        $rate_limit = $client->getRateLimit();
-        $rem_rate_limit = $client->getRateLimitRemaining();
-        
-        echo '<div class="updated"><p>Authentation with login <b>' . $login . '</b> (' . $user->getName() . ', ' . $user->getPublicRepos() . ' public repositories): rate limit: ' . ($rate_limit - $rem_rate_limit) . ' / ' . $rate_limit . '</p></div>';
+        echo '<div class="updated"><p>Authentication with '
+            . ($key ? 'key' : 'login') . '  <b>' . $login . '</b> ('
+            . $user->getName() . ', ' . $user->getPublicRepos() . ' public repositories): rate limit: '
+            . ($rate_limit - $rem_rate_limit) . ' / ' . $rate_limit . '</p></div>';
     }
     
     /**
@@ -225,6 +252,10 @@ class Github {
             'format' => 'm/d/Y',
             'template' => 'default',
         ), $attributes));
+        
+        if (!isset(Github::$templates[$template]['github_commits'])) {
+            return '';
+        }
         
         $client = Github::setup_client();
         
@@ -251,17 +282,22 @@ class Github {
                 $repo_commits = $client->repos->commits->listCommitsOnRepository($user, $repo);
                 
                 foreach ($repo_commits as $commit) {
-                    $commits[] = array(
-                        ':repository' => $repository,
-                        ':timestamp' => strtotime($commit->getCommit()->getAuthor()->date),
-                        ':date' => date($format, strtotime($commit->getCommit()->getAuthor()->date)),
-                        ':message' => $commit->getCommit()->getMessage(),
-                        ':url' => $commit->getCommit()->getUrl(),
-                        ':user_avatar' => $commit->getAuthor()->getAvatarUrl(),
-                        ':user_login' => $commit->getAuthor()->getLogin(),
-                        ':user_url' => $commit->getAuthor()->getUrl(),
-                        ':sha' => substr($commit->getSha(), 0, 7),
-                    );
+                    // Sometimes, the user cannot be found.
+                    if (is_object($commit->getAuthor())) {
+                        $commits[] = array(
+                            ':repository' => $repository,
+                            ':timestamp' => strtotime($commit->getCommit()->getAuthor()->date),
+                            ':date' => date($format, strtotime($commit->getCommit()->getAuthor()->date)),
+                            ':message' => $commit->getCommit()->getMessage(),
+                            ':url' => $commit->getCommit()->getUrl(),
+                            ':html_url' => $commit->getHTMLUrl(),
+                            ':user_avatar' => $commit->getAuthor()->getAvatarUrl(),
+                            ':user_login' => $commit->getAuthor()->getLogin(),
+                            ':user_url' => $commit->getAuthor()->getUrl(),
+                            ':user_html_url' => $commit->getAuthor()->getHTMLUrl(),
+                            ':sha' => substr($commit->getSha(), 0, 7),
+                        );
+                    }
                 }
             }
         }
@@ -316,6 +352,10 @@ class Github {
             'format' => 'm/d/Y',
             'template' => 'default',
         ), $attributes));
+        
+        if (!isset(Github::$templates[$template]['github_issues'])) {
+            return '';
+        }
         
         $client = Github::setup_client();
         
@@ -401,6 +441,10 @@ class Github {
             'template' => 'default',
         ), $attributes));
         
+        if (!isset(Github::$templates[$template]['github_releases'])) {
+            return '';
+        }
+        
         $client = Github::setup_client();
         
         $cache_string = 'wp_github_releases' . Github::md5($attributes);
@@ -472,40 +516,6 @@ class Github {
         Github::cache_set($cache_string, $html, Github::CACHE_EXPIRE);
         
         return $html;
-    }
-    
-    /**
-     * Get the number of repositories of the user:
-     * 
-     *  [github-user-num-repos user="davidstutz"]
-     * 
-     * @param array $attributes
-     * @param string $content
-     * @return string
-     */
-    public static function user_num_repos($attributes, $content = null) {
-        extract(shortcode_atts(array(
-            'user' => '',
-            'type' => 'owner',
-        ), $attributes));
-        
-        $client = Github::setup_client();
-        
-        $cache_string = 'wp_github_user_num_repos' . Github::md5($attributes);
-        $cache = Github::cache_get($cache_string);
-        if ($cache !== FALSE) {
-            return $cache;
-        }
-        
-        if (!empty($user)) {
-           
-            $num = $client->users->getSingleUser($user)->getPublicRepos();
-            Github::cache_set($cache_string, $num, Github::CACHE_EXPIRE);
-            
-            return $num;
-        }
-        
-        return '';
     }
 }
 

@@ -1,3 +1,0 @@
-[submodule "vendor/github-php-client"]
-	path = vendor/github-php-client
-	url = https://github.com/tan-tan-kanarek/github-php-client.git

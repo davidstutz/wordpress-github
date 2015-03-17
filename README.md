@@ -2,7 +2,7 @@
 
 Lightweight Wordpress plugin providing acess to GitHub through shortcodes. The plugin is aimed to provide functionality to display repositories, users, commits and issues.
 
-**Work in Progress.**
+**Note:** After authenticating as described in [Settings](#settings), login and password are stored as plain text in the database.
 
 ![Settings for Authentication.](screenshot.png?raw=true 'Settings for Authentication.')
 
@@ -14,8 +14,6 @@ Lightweight Wordpress plugin providing acess to GitHub through shortcodes. The p
     * [Commits](#commits)
     * [Issues](#issues)
     * [Releases](#releases)
-    * [User](#user)
-        * [Number of Repositories](#number-of-repositories)
 
 ## Installation
 
@@ -82,16 +80,6 @@ This will show the 3 most recent releases of `davidstutz/wordpress-github` (note
     </ul>
 
 Additional templates can be added by adapting `Github::$templates`.
-
-### User
-
-#### Number of Repositories
-
-To get the number of public repositories of a specific user, use:
-
-    [github-user-num-repos user="davidstutz"]
-
-The shortcode merely prints the number of repositories without any HTML tags.
 
 ## License
 
